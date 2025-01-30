@@ -189,24 +189,32 @@ router.get('/usdc-balance/:name', async (req, res) => {
 // Send USDC
 router.post('/send-usdc', async (req, res) => {
   try {
-    const { senderName, pin, recipientAddress, amount } = req.body;
+    const { senderName, pin, recipientName, amount } = req.body;
 
     // Validate input
-    if (!senderName || !pin || !recipientAddress || !amount) {
+    if (!senderName || !pin || !recipientName || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Find sender
-    const sender = await User.findOne({ name: senderName });
+    // Find sender with case-insensitive search
+    const sender = await User.findOne({ 
+      name: { $regex: new RegExp(`^${senderName}$`, 'i') } 
+    });
     if (!sender) return res.status(404).json({ error: 'Sender not found' });
 
-    // Send USDC
+    // Find recipient with case-insensitive search
+    const recipient = await User.findOne({ 
+      name: { $regex: new RegExp(`^${recipientName}$`, 'i') } 
+    });
+    if (!recipient) return res.status(404).json({ error: 'Recipient not found' });
+
+    // Send USDC using recipient's address from DB
     const result = await sendUSDC(
       sender.encryptedPrivateKey,
       sender.iv,
       sender.salt,
       pin,
-      recipientAddress,
+      recipient.address, // Use address from recipient's record
       amount
     );
 
@@ -217,6 +225,8 @@ router.post('/send-usdc', async (req, res) => {
     res.json({
       success: true,
       message: 'USDC transfer initiated',
+      sender: sender.name,
+      recipient: recipient.name,
       txId: result.txId,
       explorerLink: result.explorerLink
     });
@@ -224,6 +234,34 @@ router.post('/send-usdc', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: 'Transfer failed',
+      details: error.message
+    });
+  }
+});
+
+
+// New search endpoint
+router.post('/search', async (req, res) => {
+  try {
+    const { name } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const users = await User.find({
+      name: { $regex: name, $options: 'i' }
+    }).select('-encryptedPrivateKey -iv -salt -__v');
+
+    res.json({
+      success: true,
+      count: users.length,
+      users
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      error: 'Search failed',
       details: error.message
     });
   }
