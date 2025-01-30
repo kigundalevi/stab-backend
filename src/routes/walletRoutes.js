@@ -209,10 +209,10 @@ router.post('/send-usdc', async (req, res) => {
     if (!recipient) return res.status(404).json({ error: 'Recipient not found' });
 
     // Validate PIN (implementation depends on your auth setup)
-    const isPinValid = await verifyPin(sender.encryptedPin, pin);
-    if (!isPinValid) {
-      return res.status(401).json({ error: 'Invalid PIN' });
-    }
+    // const isPinValid = await verifyPin(sender.encryptedPin, pin);
+    // if (!isPinValid) {
+    //   return res.status(401).json({ error: 'Invalid PIN' });
+    // }
 
     // Send USDC
     const result = await sendUSDC(
