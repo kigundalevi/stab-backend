@@ -196,31 +196,31 @@ router.post('/send-usdc', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Find sender with case-insensitive search
+    // Find sender
     const sender = await User.findOne({ 
       name: { $regex: new RegExp(`^${senderName}$`, 'i') } 
     });
     if (!sender) return res.status(404).json({ error: 'Sender not found' });
 
-    // Find recipient with case-insensitive search
+    // Find recipient
     const recipient = await User.findOne({ 
       name: { $regex: new RegExp(`^${recipientName}$`, 'i') } 
     });
     if (!recipient) return res.status(404).json({ error: 'Recipient not found' });
-    
-    const isPinValid = await verifyPin(User.encryptedPin, pin);
-    
+
+    // Validate PIN (implementation depends on your auth setup)
+    const isPinValid = await verifyPin(sender.encryptedPin, pin);
     if (!isPinValid) {
       return res.status(401).json({ error: 'Invalid PIN' });
     }
 
-    // Send USDC using recipient's address from DB
+    // Send USDC
     const result = await sendUSDC(
       sender.encryptedPrivateKey,
       sender.iv,
       sender.salt,
       pin,
-      recipient.address, // Use address from recipient's record
+      recipient.address,
       amount
     );
 
@@ -228,19 +228,74 @@ router.post('/send-usdc', async (req, res) => {
       return res.status(400).json(result);
     }
 
+    // Record transactions for both parties
+    try {
+      const transactionDate = new Date();
+      
+      // Update sender's transactions
+      await User.updateOne(
+        { name: sender.name },
+        { 
+          $push: { 
+            transactions: {
+              date: transactionDate,
+              type: 'send',
+              amount: amount,
+              currency: 'USDC',
+              counterparty: recipient.name,
+              status: 'completed',
+              txHash: result.txId
+            }
+          }
+        }
+      );
+
+      // Update recipient's transactions
+      await User.updateOne(
+        { name: recipient.name },
+        { 
+          $push: { 
+            transactions: {
+              date: transactionDate,
+              type: 'receive',
+              amount: amount,
+              currency: 'USDC',
+              counterparty: sender.name,
+              status: 'completed',
+              txHash: result.txId
+            }
+          }
+        }
+      );
+
+    } catch (dbError) {
+      console.error('Transaction recording failed:', dbError);
+      return res.status(500).json({
+        success: false,
+        error: 'Transfer succeeded but failed to save transaction history',
+        txId: result.txId,
+        explorerLink: result.explorerLink
+      });
+    }
+
+    // Success response
     res.json({
       success: true,
-      message: 'USDC transfer initiated',
+      message: 'USDC transfer completed',
       sender: sender.name,
       recipient: recipient.name,
+      amount: amount,
+      currency: 'USDC',
       txId: result.txId,
-      explorerLink: result.explorerLink
+      explorerLink: result.explorerLink,
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
+    console.error('Transfer error:', error);
     res.status(500).json({
       error: 'Transfer failed',
-      details: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -269,6 +324,64 @@ router.post('/search', async (req, res) => {
     res.status(500).json({
       error: 'Search failed',
       details: error.message
+    });
+  }
+});
+  
+// Get user transactions
+router.get('/transactions/:name', async (req, res) => {
+  try {
+    const user = await User.findOne({ 
+      name: { $regex: new RegExp(`^${req.params.name}$`, 'i') } 
+    }).select('transactions');
+
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'User not found' 
+      });
+    }
+
+    res.json({
+      success: true,
+      transactions: user.transactions
+    });
+
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Server error'
+    });
+  }
+});
+ // Add this to your walletRoutes.js
+router.get('/exchange-rate', async (req, res) => {
+  try {
+    // Hardcoded exchange rate (1 USDC = 129 KES)
+    const hardcodedRate = 129;
+    
+    /* Uncomment this section to use real API data
+    const response = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=kes');
+    const rate = response.data['usd-coin'].kes;
+    
+    if (!rate) {
+      throw new Error('Failed to fetch exchange rate');
+    }
+    */
+    
+    res.json({
+      success: true,
+      rate: hardcodedRate // Replace with 'rate' variable when using real API
+    });
+
+  } catch (error) {
+    console.error('Exchange rate error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch exchange rate',
+      // Include fallback rate in error response
+      rate: 129 // Maintain 129 KES as fallback
     });
   }
 });

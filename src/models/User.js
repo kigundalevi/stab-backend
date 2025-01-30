@@ -31,7 +31,26 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  transactions: [{
+    date: {
+      type: Date,
+      default: Date.now
+    },
+    type: {
+      type: String,
+      enum: ['send', 'receive', 'add', 'withdraw']
+    },
+    amount: Number,
+    currency: String,
+    counterparty: String,
+    status: {
+      type: String,
+      enum: ['pending', 'completed', 'failed'],
+      default: 'completed'
+    },
+    txHash: String
+  }]
 
 });
 
