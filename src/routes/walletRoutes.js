@@ -138,7 +138,7 @@ router.get('/balance/:name', async (req, res) => {
     // 2. Get SOL address from user record
     const publicKey = new PublicKey(user.address);
     
-    // 3. Fetch balance from Solana blockchain
+    // 3. Fetch balance from So lana blockchain
     const balance = await solanaConnection.getBalance(publicKey);
     
     // 4. Convert lamports to SOL
@@ -207,6 +207,12 @@ router.post('/send-usdc', async (req, res) => {
       name: { $regex: new RegExp(`^${recipientName}$`, 'i') } 
     });
     if (!recipient) return res.status(404).json({ error: 'Recipient not found' });
+    
+    const isPinValid = await verifyPin(User.encryptedPin, pin);
+    
+    if (!isPinValid) {
+      return res.status(401).json({ error: 'Invalid PIN' });
+    }
 
     // Send USDC using recipient's address from DB
     const result = await sendUSDC(
